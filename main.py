@@ -1,5 +1,6 @@
 import io
-from fastapi import FastAPI, File, UploadFile, HTTPException
+import requests
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import StreamingResponse
 import pdfplumber
 import openpyxl
@@ -11,17 +12,28 @@ def home():
     return {"status": "online", "message": "Doc Converter API Calisiyor"}
 
 @app.post("/convert/pdf-to-excel")
-async def pdf_to_excel(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Lutfen sadece PDF dosyasi yukleyin.")
+async def pdf_to_excel(
+    file: UploadFile = File(None),
+    file_url: str = Form(None)
+):
+    pdf_bytes = None
 
-    pdf_bytes = await file.read()
-    
+    if file:
+        pdf_bytes = await file.read()
+    elif file_url:
+        if file_url.startswith("//"):
+            file_url = "https:" + file_url
+        res = requests.get(file_url)
+        if res.status_code == 200:
+            pdf_bytes = res.content
+        else:
+            raise HTTPException(status_code=400, detail="URL'den dosya indirilemedi.")
+    else:
+        raise HTTPException(status_code=400, detail="Lutfen dosya veya file_url gonderin.")
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Donusturulen Tablo"
-
-    current_row = 1
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
@@ -29,8 +41,6 @@ async def pdf_to_excel(file: UploadFile = File(...)):
             for table in tables:
                 for row_data in table:
                     ws.append([cell if cell is not None else "" for cell in row_data])
-                    current_row += 1
-                current_row += 1  # Tablolar arasi 1 satir bosluk
 
     output = io.BytesIO()
     wb.save(output)
@@ -38,6 +48,6 @@ async def pdf_to_excel(file: UploadFile = File(...)):
 
     return StreamingResponse(
         output,
-        headers={"Content-Disposition": f"attachment; filename=donusturulen_{file.filename.replace('.pdf', '.xlsx')}"},
+        headers={"Content-Disposition": "attachment; filename=donusturulen_tablo.xlsx"},
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
