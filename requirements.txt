@@ -3,5 +3,5 @@ uvicorn
 python-multipart
 pdfplumber
 openpyxl
-pandas
 requests
+reportlab
